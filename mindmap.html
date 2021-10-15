@@ -80,6 +80,10 @@
             line-height: 100%;
         }
 
+        .has_memo {
+            background: #dc2323;
+        }
+
         progress {
             width: 100%;
         }
@@ -188,6 +192,7 @@
 
                     if (this.showingMemoCount === 0) {
                         Utils.hideDim();
+                        this.#drawMindmap()
                     }
 
                 }).bind(this)
@@ -515,7 +520,7 @@
         <button class="circle" data-node-id="${nodeData.id}" data-parent-node-id="${nodeData.parentId}" name="add_sibling">s</button>
         <button class="circle" data-node-id="${nodeData.id}" data-parent-node-id="${nodeData.parentId}" name="add_task">t</button>
         <button class="circle" data-node-id="${nodeData.id}" data-parent-node-id="${nodeData.parentId}" name="remove_node">r</button>
-        <button class="circle" data-node-id="${nodeData.id}" data-parent-node-id="${nodeData.parentId}" name="add_node_memo">m</button>
+        <button class="circle ${nodeData.memos && nodeData.memos.length > 0 ? "has_memo" : ""}" data-node-id="${nodeData.id}" data-parent-node-id="${nodeData.parentId}" name="add_node_memo">m</button>
         <input type="color" value="${nodeData.color || '#fff'}" data-node-id="${nodeData.id}" data-parent-node-id="${nodeData.parentId}">
         <br/>
         ${nodeData.doneTasksNum || 0} / ${nodeData.totalTasksNum || 0}
@@ -532,7 +537,7 @@
     <input type="checkbox" ${child.checked ? "checked" : ""} name="task-status" id="${child.id}" data-node-id="${nodeData.id}" data-task-id="${child.id}"/>
     <label for="${child.id}"><input type="text" name="task" value="${child.text || ''}" data-node-id="${nodeData.id}" data-task-id="${child.id}"/></label>
     &nbsp;<button class="circle" data-node-id="${nodeData.id}" data-task-id="${child.id}" name="remove_task">r</button>
-    &nbsp;<button class="circle" data-node-id="${nodeData.id}" data-task-id="${child.id}" name="add_task_memo">m</button>
+    &nbsp;<button class="circle ${child.memos && child.memos.length > 0 ? "has_memo" : ""}" data-node-id="${nodeData.id}" data-task-id="${child.id}" name="add_task_memo">m</button>
 `
                 ));
                 node.find(".node").append(tasks)
