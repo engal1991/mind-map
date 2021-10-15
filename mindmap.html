@@ -370,6 +370,33 @@
 
             }).bind(this))
 
+
+            $(document).on("click", "button[name=add_node_memo]", ((e) => {
+                e.preventDefault();
+
+                Utils.showDim();
+
+                let nodeId = $(e.target).data("nodeId");
+                let node = this.#getNode(nodeId, this.mindmap);
+
+                this.memoNode = node;
+
+                $.PostItAll.destroy();
+
+                if (node.memos && node.memos.length > 0) {
+                    node.memos.forEach(option => {
+                        $.PostItAll.new(option)
+                    });
+                } else {
+                    $.PostItAll.new()
+                }
+            }).bind(this));
+
+        }
+
+        #addEventTask() {
+
+
             $(document).on("click", "button[name=remove_task]", ((e) => {
                 e.preventDefault();
 
@@ -383,9 +410,6 @@
                 this.#drawMindmap();
 
             }).bind(this));
-        }
-
-        #addEventTask() {
 
             $(document).on("change", "input[type=checkbox][name=task-status]", ((e) => {
 
@@ -491,6 +515,7 @@
         <button class="circle" data-node-id="${nodeData.id}" data-parent-node-id="${nodeData.parentId}" name="add_sibling">s</button>
         <button class="circle" data-node-id="${nodeData.id}" data-parent-node-id="${nodeData.parentId}" name="add_task">t</button>
         <button class="circle" data-node-id="${nodeData.id}" data-parent-node-id="${nodeData.parentId}" name="remove_node">r</button>
+        <button class="circle" data-node-id="${nodeData.id}" data-parent-node-id="${nodeData.parentId}" name="add_node_memo">m</button>
         <input type="color" value="${nodeData.color || '#fff'}" data-node-id="${nodeData.id}" data-parent-node-id="${nodeData.parentId}">
         <br/>
         ${nodeData.doneTasksNum || 0} / ${nodeData.totalTasksNum || 0}
