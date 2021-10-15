@@ -5,7 +5,30 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
+    <link rel="stylesheet" href="http://postitall.txusko.com/libs/jquery-ui/themes/base/jquery-ui.css">
+    <link rel="stylesheet"
+          href="http://postitall.txusko.com/libs/jqueryui-timepicker-addon/dist/jquery-ui-timepicker-addon.css">
+    <link rel="stylesheet" href="http://postitall.txusko.com/libs/trumbowyg/dist/ui/trumbowyg.css">
+    <link rel="stylesheet" href="http://postitall.txusko.com/libs/minicolors/jquery.minicolors.css">
+    <link rel="stylesheet" href="http://postitall.txusko.com/dist/jquery.postitall.css">
+
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.4.0/css/font-awesome.min.css">
+    <link href='https://fonts.googleapis.com/css?family=Shadows+Into+Light' rel='stylesheet' type='text/css'>
+
     <style>
+
+        .dim {
+            position: fixed;
+            top: 0px;
+            left: 0px;
+            width: 100%;
+            height: 100%;
+            z-index: 3;
+            opacity: 0.5;
+            background-color: rgb(0, 0, 0);
+        }
+
+
         .floatTL {
             position: absolute;
             top: 0px;
@@ -16,7 +39,7 @@
             overflow: scroll;
             width: max-content;
             height: max-content;
-            z-index: 999;
+            z-index: 2;
         }
 
         .hierarchy {
@@ -69,6 +92,11 @@
             width: 300px;
         }
 
+        input[type=color] {
+            width: revert;
+            height: revert;
+        }
+
     </style>
 
 </head>
@@ -83,456 +111,495 @@
     </svg>
 </div>
 
+<div class="dim" style="display: none"></div>
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+<script src="http://postitall.txusko.com/libs/jquery/dist/jquery.min.js"></script>
+<script src="http://postitall.txusko.com/libs/jquery-ui/jquery-ui.min.js"></script>
+<script src="http://postitall.txusko.com/libs/jqueryui-timepicker-addon/dist/jquery-ui-timepicker-addon.min.js"></script>
+<script src="http://postitall.txusko.com/libs/trumbowyg/dist/trumbowyg.min.js"></script>
+<script src="http://postitall.txusko.com/libs/minicolors/jquery.minicolors.min.js"></script>
+<script src="http://postitall.txusko.com/dist/jquery.postitall.js"></script>
 <script>
 
-    let mindmap = {}
-
-
-    let id = 0;
-
-    function resetId(data) {
-
-        if (data.tasks) {
-            data.tasks.forEach((task, idx) => task.id = `node-${id}-task-${idx}`)
+    class Utils {
+        static showDim() {
+            $(".dim").show();
         }
 
-        let nodeId = `node-${id++}`;
-        data.id = nodeId;
-
-        if (data.children) {
-            for (const child of data.children) {
-                child.parentId = nodeId;
-                resetId(child);
-            }
+        static hideDim() {
+            $(".dim").hide();
         }
-
     }
 
-    function resetProgress(totalTasksNum, doneTasksNum, data) {
-        let ttn = totalTasksNum;
-        let dtn = doneTasksNum;
+    class MindMap {
+        constructor() {
+            this.mindmap = {};
+            this.id = 0;
+            this.showingMemoCount = 0;
+            this.memoNode = undefined;
 
-        if (data.children) {
-            let t = 0;
-            let d = 0;
-            for (const child of data.children) {
-                let {ttn, dtn} = resetProgress(totalTasksNum, doneTasksNum, child)
-                t += ttn;
-                d += dtn;
+            this.#drawMindmap();
+
+            this.#addEventNodeChange()
+            this.#addEventNodeButton()
+            this.#addEventTask()
+
+            this.#initPostItAll();
+        }
+
+        #initPostItAll() {
+            $.PostItAll.changeConfig('note', {
+                askOnDelete: false,
+                style: {
+                    "z-index": 999,
+                    "textshadow": false
+                },
+                position: 'rlative',
+                posX: '10px',
+                posY: '10px',
+                onCreated: ((id, options, obj) => {
+                    this.showingMemoCount++;
+                }).bind(this),
+                onChange: ((id) => {
+                    let options = $(id).postitall('options');
+                    this.memoNode.memos = this.memoNode.memos || [];
+
+                    let idx = this.memoNode.memos.findIndex(option => $.fn.postitall.globals.prefix + option.id === id)
+                    if (idx === -1) {
+                        this.memoNode.memos.push(options)
+                    } else {
+                        this.memoNode.memos[idx] = options
+                    }
+                }).bind(this),
+                onDelete: ((id) => {
+                    this.showingMemoCount--;
+                    let options = $(id).postitall('options');
+
+                    let tmp = document.createElement("DIV");
+                    tmp.innerHTML = options.content;
+                    let content = tmp.textContent || tmp.innerText || "";
+
+                    let message = `"${content.substring(0, Math.min(10, content.length))}"\n메시지를 유지하시겠습니까?`
+
+                    if (confirm(message) === false) {
+                        this.memoNode.memos = this.memoNode.memos.filter(options => $.fn.postitall.globals.prefix + options.id !== id)
+                    }
+
+                    if (this.showingMemoCount === 0) {
+                        Utils.hideDim();
+                    }
+
+                }).bind(this)
+            });
+        }
+
+        #addEventNodeChange() {
+
+            $(document).on("change", "input[type=text][name=title]", ((e) => {
+                e.preventDefault();
+
+                let nodeId = $(e.target).data("nodeId");
+                let node = this.#getNode(nodeId, this.mindmap);
+
+                node.text = $(e.target).val();
+
+            }).bind(this));
+
+            $(document).on("change", "input[type=text][name=author]", ((e) => {
+                e.preventDefault();
+
+                let nodeId = $(e.target).data("nodeId");
+                let node = this.#getNode(nodeId, this.mindmap);
+
+                node.author = $(e.target).val();
+
+            }).bind(this))
+
+            $(document).on("change", "input[type=text][name=issue]", ((e) => {
+                e.preventDefault();
+
+                let nodeId = $(e.target).data("nodeId");
+                let node = this.#getNode(nodeId, this.mindmap);
+
+                node.issue = $(e.target).val();
+
+            }).bind(this))
+
+            $(document).on("click", "button[name=link_issue]", ((e) => {
+                e.preventDefault();
+
+                let nodeId = $(e.target).data("nodeId");
+                let node = this.#getNode(nodeId, this.mindmap);
+
+                if (node.issue) {
+                    window.open(node.issue)
+                } else {
+                    alert("이슈를 등록해주세요.")
+                }
+
+            }).bind(this))
+
+
+            $(document).on("change", "input[type=text][name=task]", ((e) => {
+                e.preventDefault();
+
+                let taskId = $(e.target).data("taskId");
+                let nodeId = $(e.target).data("nodeId");
+                let node = this.#getNode(nodeId, this.mindmap);
+
+                for (const task of node.tasks) {
+                    if (task.id === taskId) {
+                        task.text = $(e.target).val();
+                    }
+                }
+            }).bind(this))
+
+            $(document).on("keyup", "input[type=text][name=task]", ((e) => {
+                e.preventDefault();
+
+                if (e.key === 'Enter') {
+                    let taskId = $(e.target).data("taskId");
+                    let nodeId = $(e.target).data("nodeId");
+                    let node = this.#getNode(nodeId, this.mindmap);
+
+                    let idx = node.tasks.findIndex((task) => task.id === taskId);
+                    if (idx === node.tasks.length - 1) { // 마지막
+                        node.tasks = node.tasks || [];
+                        node.tasks.push({})
+
+                        this.#drawMindmap();
+
+                        node = this.#getNode(nodeId, this.mindmap);
+                    }
+
+                    $(`input[type=text][data-task-id=${node.tasks[idx + 1].id}]`).focus();
+
+                }
+            }).bind(this))
+
+
+            $(document).on("change", "input[type=color]", ((e) => {
+                e.preventDefault();
+
+                let nodeId = $(e.target).data("nodeId");
+                let node = this.#getNode(nodeId, this.mindmap);
+
+                node.color = $(e.target).val();
+
+                this.#drawMindmap();
+            }).bind(this))
+
+            $(document).on("change", "input[type=date]", ((e) => {
+                e.preventDefault();
+
+                let nodeId = $(e.target).data("nodeId");
+                let node = this.#getNode(nodeId, this.mindmap);
+
+                node.dDay = $(e.target).val();
+
+                this.#drawMindmap();
+            }).bind(this))
+
+
+        }
+
+        #addEventNodeButton() {
+
+            $(document).on("click", "button[name=add_child]", ((e) => {
+                e.preventDefault();
+
+                let nodeId = $(e.target).data("nodeId");
+                let node = this.#getNode(nodeId, this.mindmap);
+
+                node.children = node.children || [];
+                node.children.push({})
+
+                this.#drawMindmap();
+
+            }).bind(this));
+
+            $(document).on("click", "button[name=add_sibling]", ((e) => {
+                e.preventDefault();
+
+                let nodeId = $(e.target).data("nodeId");
+                let node = this.#getNode(nodeId, this.mindmap);
+                if (this.#isRootNode(node)) {
+                    return;
+                }
+
+                let parentNodeId = $(e.target).data("parentNodeId");
+                let parentNode = this.#getNode(parentNodeId, this.mindmap);
+
+                parentNode.children = parentNode.children || [];
+                parentNode.children.push({})
+
+                this.#drawMindmap();
+
+            }).bind(this));
+
+            $(document).on("click", "button[name=add_task]", ((e) => {
+                e.preventDefault();
+
+                let nodeId = $(e.target).data("nodeId");
+                let node = this.#getNode(nodeId, this.mindmap);
+
+                node.tasks = node.tasks || [];
+                node.tasks.push({})
+
+                this.#drawMindmap();
+
+            }).bind(this));
+
+
+            $(document).on("click", "button[name=remove_node]", ((e) => {
+                e.preventDefault();
+
+                let nodeId = $(e.target).data("nodeId");
+                let node = this.#getNode(nodeId, this.mindmap);
+                if (this.#isRootNode(node)) {
+                    return;
+                }
+
+                let parentNodeId = $(e.target).data("parentNodeId");
+                let parentNode = this.#getNode(parentNodeId, this.mindmap);
+
+                parentNode.children = parentNode.children.filter(t => t.id !== nodeId);
+
+                this.#drawMindmap();
+
+            }).bind(this))
+
+            $(document).on("click", "button[name=remove_task]", ((e) => {
+                e.preventDefault();
+
+                let taskId = $(e.target).data("taskId");
+
+                let nodeId = $(e.target).data("nodeId");
+                let node = this.#getNode(nodeId, this.mindmap);
+
+                node.tasks = node.tasks.filter(task => (task.id) !== taskId);
+
+                this.#drawMindmap();
+
+            }).bind(this));
+        }
+
+        #addEventTask() {
+
+            $(document).on("change", "input[type=checkbox][name=task-status]", ((e) => {
+
+                let taskId = $(e.target).data("taskId");
+                let nodeId = $(e.target).data("nodeId");
+                let node = this.#getNode(nodeId, this.mindmap);
+
+                for (const task of node.tasks) {
+                    if (task.id === taskId) {
+                        task.checked = $(e.target).is(":checked")
+                    }
+                }
+
+                this.#drawMindmap();
+            }).bind(this))
+
+            $(document).on("click", "button[name=add_task_memo]", ((e) => {
+                e.preventDefault();
+
+
+                Utils.showDim();
+
+                let taskId = $(e.target).data("taskId");
+                let nodeId = $(e.target).data("nodeId");
+                let node = this.#getNode(nodeId, this.mindmap);
+                let task = node.tasks.find(task => task.id === taskId);
+
+                this.memoNode = task;
+
+                $.PostItAll.destroy();
+
+                if (task.memos && task.memos.length > 0) {
+                    task.memos.forEach(option => {
+                        $.PostItAll.new(option)
+                    });
+                } else {
+                    $.PostItAll.new()
+                }
+            }).bind(this));
+        }
+
+
+        #resetId(nodeData) {
+            if (nodeData.tasks) {
+                nodeData.tasks.forEach((task, idx) => task.id = `node-${this.id}-task-${idx}`)
             }
-            ttn += t;
-            dtn += d;
+
+            let nodeId = `node-${this.id++}`;
+            nodeData.id = nodeId;
+
+            if (nodeData.children) {
+                for (const child of nodeData.children) {
+                    child.parentId = nodeId;
+                    this.#resetId(child);
+                }
+            }
+
         }
 
-        if (data.tasks) {
-            ttn += data.tasks.length;
-            dtn += data.tasks.filter(task => task.checked).length
+        #resetProgress(totalTasksNum, doneTasksNum, nodeData) {
+            let ttn = totalTasksNum;
+            let dtn = doneTasksNum;
+
+            if (nodeData.children) {
+                let t = 0;
+                let d = 0;
+                for (const child of nodeData.children) {
+                    let {ttn, dtn} = this.#resetProgress(totalTasksNum, doneTasksNum, child)
+                    t += ttn;
+                    d += dtn;
+                }
+                ttn += t;
+                dtn += d;
+            }
+
+            if (nodeData.tasks) {
+                ttn += nodeData.tasks.length;
+                dtn += nodeData.tasks.filter(task => task.checked).length
+            }
+
+            nodeData.totalTasksNum = ttn;
+            nodeData.doneTasksNum = dtn;
+
+            return {ttn, dtn}
         }
 
-        data.totalTasksNum = ttn;
-        data.doneTasksNum = dtn;
-
-        return {ttn, dtn}
-    }
-
-    function drawDiv(parent, data) {
-        let nodeTemplate = `
-<div class="node_wrapper" id="${data.id}">
-    <div class="node ${(data.totalTasksNum !== 0 && data.doneTasksNum === data.totalTasksNum) ? 'complete' : ''}"
-        style="${data.color ? "border:2px solid " + data.color + ";" : ""}"
+        #drawDiv(parent, nodeData) {
+            let nodeTemplate = `
+<div class="node_wrapper" id="${nodeData.id}">
+    <div class="node ${(nodeData.totalTasksNum !== 0 && nodeData.doneTasksNum === nodeData.totalTasksNum) ? 'complete' : ''}"
+        style="${nodeData.color ? "border:2px solid " + nodeData.color + ";" : ""}"
     >
-        제목 : <input type="text" name="title" value="${data.text || ''}" data-node-id="${data.id}" data-parent-node-id="${data.parentId}"/>
+        제목 : <input type="text" name="title" value="${nodeData.text || ''}" data-node-id="${nodeData.id}" data-parent-node-id="${nodeData.parentId}"/>
         <br/>
-        ISSUE : <input type="text" name="issue" value="${data.issue || ''}" data-node-id="${data.id}" data-parent-node-id="${data.parentId}"/>
-        <button class="circle" data-node-id="${data.id}" data-parent-node-id="${data.parentId}"  name="link_issue">go</button>
+        ISSUE : <input type="text" name="issue" value="${nodeData.issue || ''}" data-node-id="${nodeData.id}" data-parent-node-id="${nodeData.parentId}"/>
+        <button class="circle" data-node-id="${nodeData.id}" data-parent-node-id="${nodeData.parentId}"  name="link_issue">go</button>
         <br/>
-        담당자 : <input type="text" name="author" value="${data.author || ''}" data-node-id="${data.id}" data-parent-node-id="${data.parentId}"/>
+        담당자 : <input type="text" name="author" value="${nodeData.author || ''}" data-node-id="${nodeData.id}" data-parent-node-id="${nodeData.parentId}"/>
         <br/>
-        D-Day : <input type="date" value="${data.dDay || ''}" data-node-id="${data.id}" data-parent-node-id="${data.parentId}"/>
+        D-Day : <input type="date" value="${nodeData.dDay || ''}" data-node-id="${nodeData.id}" data-parent-node-id="${nodeData.parentId}"/>
         <br/>
-        <button class="circle" data-node-id="${data.id}" data-parent-node-id="${data.parentId}" name="add_child">c</button>
-        <button class="circle" data-node-id="${data.id}" data-parent-node-id="${data.parentId}" name="add_sibling">s</button>
-        <button class="circle" data-node-id="${data.id}" data-parent-node-id="${data.parentId}" name="add_task">t</button>
-        <button class="circle" data-node-id="${data.id}" data-parent-node-id="${data.parentId}" name="remove_node">r</button>
-        <input type="color" value="${data.color}" data-node-id="${data.id}" data-parent-node-id="${data.parentId}">
+        <button class="circle" data-node-id="${nodeData.id}" data-parent-node-id="${nodeData.parentId}" name="add_child">c</button>
+        <button class="circle" data-node-id="${nodeData.id}" data-parent-node-id="${nodeData.parentId}" name="add_sibling">s</button>
+        <button class="circle" data-node-id="${nodeData.id}" data-parent-node-id="${nodeData.parentId}" name="add_task">t</button>
+        <button class="circle" data-node-id="${nodeData.id}" data-parent-node-id="${nodeData.parentId}" name="remove_node">r</button>
+        <input type="color" value="${nodeData.color || '#fff'}" data-node-id="${nodeData.id}" data-parent-node-id="${nodeData.parentId}">
         <br/>
-        ${data.doneTasksNum || 0} / ${data.totalTasksNum || 0}
+        ${nodeData.doneTasksNum || 0} / ${nodeData.totalTasksNum || 0}
         <br/>
-        <progress id="${data.id}-progress" max="100" value="${(data.doneTasksNum / data.totalTasksNum) * 100}"/>
+        <progress id="${nodeData.id}-progress" max="100" value="${(nodeData.doneTasksNum / nodeData.totalTasksNum) * 100}"/>
     </div>
 </div>
 `
-        let node = $(nodeTemplate)
+            let node = $(nodeTemplate)
 
-
-        if (data.tasks) {
-            let tasks = data.tasks.map(child => $(`
+            if (nodeData.tasks) {
+                let tasks = nodeData.tasks.map(child => $(`
 <br/>
-    <input type="checkbox" ${child.checked ? "checked" : ""} name="task-status" id="${child.id}" data-node-id="${data.id}" data-task-id="${child.id}"/>
-    <label for="${child.id}"><input type="text" name="task" value="${child.text || ''}" data-node-id="${data.id}" data-task-id="${child.id}"/></label>
-    &nbsp;<button class="circle" data-node-id="${data.id}" data-task-id="${child.id}" name="remove_task">r</button>
+    <input type="checkbox" ${child.checked ? "checked" : ""} name="task-status" id="${child.id}" data-node-id="${nodeData.id}" data-task-id="${child.id}"/>
+    <label for="${child.id}"><input type="text" name="task" value="${child.text || ''}" data-node-id="${nodeData.id}" data-task-id="${child.id}"/></label>
+    &nbsp;<button class="circle" data-node-id="${nodeData.id}" data-task-id="${child.id}" name="remove_task">r</button>
+    &nbsp;<button class="circle" data-node-id="${nodeData.id}" data-task-id="${child.id}" name="add_task_memo">m</button>
 `
-            ));
-            node.find(".node").append(tasks)
+                ));
+                node.find(".node").append(tasks)
+            }
+
+            if (nodeData.children) {
+                let hierarchyTemplate = `<div class='hierarchy'/>`
+                let rootDiv = $(hierarchyTemplate);
+                nodeData.children.forEach(child => this.#drawDiv(rootDiv, child));
+                node.append(rootDiv);
+            }
+
+
+            parent.append(node);
         }
 
-        if (data.children) {
-            let hierarchyTemplate = `<div class='hierarchy'/>`
-            let rootDiv = $(hierarchyTemplate);
-            data.children.forEach(child => drawDiv(rootDiv, child));
-            node.append(rootDiv);
-        }
+        #drawSvg(root, nodeData) {
 
+            if (nodeData.children) {
+                let $parent = $("#" + nodeData.id).find(".hierarchy").first();
+                let {top, left} = $parent.position();
+                let width = $parent.width();
 
-        parent.append(node);
-    }
+                let parentBottomCenter = {"top": top, "left": left + (width / 2)}
 
-    function drawSvg(root, data) {
+                for (const child of nodeData.children) {
+                    let $child = $("#" + child.id).find(".node");
+                    let {top, left} = $child.position();
+                    let width = $child.width();
 
-        if (data.children) {
-            let $parent = $("#" + data.id).find(".hierarchy").first();
-            let {top, left} = $parent.position();
-            let width = $parent.width();
+                    let childTopCenter = {"top": top, "left": left + (width / 2)}
 
-            let parentBottomCenter = {"top": top, "left": left + (width / 2)}
+                    let newLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    newLine.setAttribute("x1", parentBottomCenter.left);
+                    newLine.setAttribute("y1", parentBottomCenter.top);
+                    newLine.setAttribute("x2", childTopCenter.left);
+                    newLine.setAttribute("y2", childTopCenter.top);
+                    newLine.setAttribute("style", "stroke:rgb(0,0,0);stroke-width:1");
 
-            for (const child of data.children) {
-                let $child = $("#" + child.id).find(".node");
-                let {top, left} = $child.position();
-                let width = $child.width();
-
-                let childTopCenter = {"top": top, "left": left + (width / 2)}
-
-                let newLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                newLine.setAttribute("x1", parentBottomCenter.left);
-                newLine.setAttribute("y1", parentBottomCenter.top);
-                newLine.setAttribute("x2", childTopCenter.left);
-                newLine.setAttribute("y2", childTopCenter.top);
-                newLine.setAttribute("style", "stroke:rgb(0,0,0);stroke-width:1");
-
-                root.appendChild(newLine);
-                drawSvg(root, child);
+                    root.appendChild(newLine);
+                    this.#drawSvg(root, child);
+                }
             }
         }
-    }
 
-    function drawMindmap() {
-        // let data = {
-        //     "text": "parent",
-        //     "color": "#bdf",
-        //     "children": [
-        //         {
-        //             "text": "child1",
-        //             "tasks": [
-        //                 {text: "1. 이거 하기", checked: true},
-        //             ],
-        //             "children": [
-        //                 {
-        //                     "text": "child1"
-        //
-        //                 },
-        //                 {
-        //                     "text": "child2"
-        //                 }
-        //             ]
-        //         },
-        //         {
-        //             "text": "child2",
-        //             "tasks": [
-        //                 {text: "1. 이거 하기"},
-        //                 {text: "2. 저거 하기"}
-        //             ],
-        //             "children": [
-        //                 {
-        //                     "text": "child1",
-        //                     "tasks": [
-        //                         {text: "1. 이거 하기"},
-        //                         {text: "2. 저거 하기", checked: true}
-        //                     ],
-        //                 },
-        //                 {
-        //                     "text": "child2"
-        //                 }
-        //             ]
-        //         },
-        //         {
-        //             "text": "child1",
-        //             "tasks": [
-        //                 {text: "1. 이거 하기", checked: true},
-        //             ],
-        //             "children": [
-        //                 {
-        //                     "text": "child1"
-        //
-        //                 },
-        //                 {
-        //                     "text": "child2"
-        //                 }
-        //             ]
-        //         },
-        //         {
-        //             "text": "child1",
-        //             "tasks": [
-        //                 {text: "1. 이거 하기", checked: true},
-        //             ],
-        //             "children": [
-        //                 {
-        //                     "text": "child1"
-        //
-        //                 },
-        //                 {
-        //                     "text": "child2"
-        //                 }
-        //             ]
-        //         },
-        //     ]
-        // }
+        #drawMindmap() {
+            $("#mindmap").empty();
+            $("svg").empty();
 
-        $("#mindmap").empty();
-        $("svg").empty();
+            this.id = 0;
+            this.#resetId(this.mindmap);
+            this.#resetProgress(0, 0, this.mindmap);
+
+            let rootDiv = $(`<div class='hierarchy'/>`);
+            this.#drawDiv(rootDiv, this.mindmap);
+            $("#mindmap").append(rootDiv);
 
 
-        id = 0;
-        resetId(mindmap);
-        resetProgress(0, 0, mindmap);
+            $("svg").attr({
+                width: $("#mindmap").width(),
+                height: $("#mindmap").height()
+            });
+            this.#drawSvg(document.querySelector("svg"), this.mindmap);
+        }
 
-        let rootDiv = $(`<div class='hierarchy'/>`);
-        drawDiv(rootDiv, mindmap);
-        $("#mindmap").append(rootDiv);
 
+        #getNode(id, data) {
+            if (data.id === id) {
+                return data;
+            }
 
-        $("svg").attr({
-            width: $("#mindmap").width(),
-            height: $("#mindmap").height()
-        });
-        drawSvg(document.querySelector("svg"), mindmap);
+            if (data.children) {
+                for (const child of data.children) {
+                    let childResult = this.#getNode(id, child);
+
+                    if (childResult) {
+                        return childResult;
+                    }
+                }
+            }
+        }
+
+        #isRootNode(node) {
+            return node.id === 'node-0';
+        }
 
     }
-
-    drawMindmap();
 
     $(document).ready(() => {
-        $(document).on("click", "button[name=add_task]", (e) => {
-            e.preventDefault();
+        new MindMap()
 
-            let nodeId = $(e.target).data("nodeId");
-            let node = getNode(nodeId, mindmap);
-
-            node.tasks = node.tasks || [];
-            node.tasks.push({})
-
-            drawMindmap();
-
-        });
-
-        $(document).on("click", "button[name=remove_task]", (e) => {
-            e.preventDefault();
-
-            let taskId = $(e.target).data("taskId");
-
-            let nodeId = $(e.target).data("nodeId");
-            let node = getNode(nodeId, mindmap);
-
-            node.tasks = node.tasks.filter(task => (task.id) !== taskId);
-
-            drawMindmap();
-
-        });
-
-        $(document).on("click", "button[name=add_child]", (e) => {
-            e.preventDefault();
-
-            let nodeId = $(e.target).data("nodeId");
-            let node = getNode(nodeId, mindmap);
-
-            node.children = node.children || [];
-            node.children.push({})
-
-            drawMindmap();
-
-        });
-
-
-        $(document).on("click", "button[name=add_sibling]", (e) => {
-            e.preventDefault();
-
-            let nodeId = $(e.target).data("nodeId");
-            let node = getNode(nodeId, mindmap);
-            if(isRootNode(node)) {
-                return;
-            }
-
-            let parentNodeId = $(e.target).data("parentNodeId");
-            let parentNode = getNode(parentNodeId, mindmap);
-
-            parentNode.children = parentNode.children || [];
-            parentNode.children.push({})
-
-            drawMindmap();
-
-        });
-
-        $(document).on("click", "button[name=remove_node]", (e) => {
-            e.preventDefault();
-
-            let nodeId = $(e.target).data("nodeId");
-            let node = getNode(nodeId, mindmap);
-            if(isRootNode(node)) {
-                return;
-            }
-
-            let parentNodeId = $(e.target).data("parentNodeId");
-            let parentNode = getNode(parentNodeId, mindmap);
-
-            parentNode.children = parentNode.children.filter(t => t.id !== nodeId);
-
-            drawMindmap();
-
-        })
-
-        $(document).on("click", "button[name=link_issue]", e => {
-            e.preventDefault();
-
-            let nodeId = $(e.target).data("nodeId");
-            let node = getNode(nodeId, mindmap);
-
-            if (node.issue) {
-                window.open(node.issue)
-            } else {
-                alert("이슈를 등록해주세요.")
-            }
-
-        })
-
-        $(document).on("change", "input[type=text][name=title]", (e) => {
-            e.preventDefault();
-
-            let nodeId = $(e.target).data("nodeId");
-            let node = getNode(nodeId, mindmap);
-
-            node.title = $(e.target).val();
-
-        });
-
-        $(document).on("change", "input[type=text][name=author]", (e) => {
-            e.preventDefault();
-
-            let nodeId = $(e.target).data("nodeId");
-            let node = getNode(nodeId, mindmap);
-
-            node.author = $(e.target).val();
-
-        })
-
-
-        $(document).on("change", "input[type=text][name=issue]", (e) => {
-            e.preventDefault();
-
-            let nodeId = $(e.target).data("nodeId");
-            let node = getNode(nodeId, mindmap);
-
-            node.issue = $(e.target).val();
-
-        })
-
-        $(document).on("change", "input[type=text][name=task]", (e) => {
-            e.preventDefault();
-
-            let taskId = $(e.target).data("taskId");
-            let nodeId = $(e.target).data("nodeId");
-            let node = getNode(nodeId, mindmap);
-
-            for (const task of node.tasks) {
-                if (task.id === taskId) {
-                    task.text = $(e.target).val();
-                }
-            }
-        })
-
-
-        $(document).on("keyup", "input[type=text][name=task]", (e) => {
-            e.preventDefault();
-
-            if (e.key === 'Enter') {
-                let taskId = $(e.target).data("taskId");
-                let nodeId = $(e.target).data("nodeId");
-                let node = getNode(nodeId, mindmap);
-
-                let idx = node.tasks.findIndex((task) => task.id === taskId);
-                if (idx === node.tasks.length - 1) { // 마지막
-                    node.tasks = node.tasks || [];
-                    node.tasks.push({})
-
-                    drawMindmap();
-
-                    node = getNode(nodeId, mindmap);
-                }
-
-                $(`input[type=text][data-task-id=${node.tasks[idx + 1].id}]`).focus();
-
-            }
-        })
-
-        $(document).on("change", "input[type=checkbox][name=task-status]", (e) => {
-
-            let taskId = $(e.target).data("taskId");
-            let nodeId = $(e.target).data("nodeId");
-            let node = getNode(nodeId, mindmap);
-
-            for (const task of node.tasks) {
-                if (task.id === taskId) {
-                    task.checked = $(e.target).is(":checked")
-                }
-            }
-
-            drawMindmap();
-        })
-
-        $(document).on("change", "input[type=color]", (e) => {
-            e.preventDefault();
-
-            let nodeId = $(e.target).data("nodeId");
-            let node = getNode(nodeId, mindmap);
-
-            node.color = $(e.target).val();
-
-            drawMindmap();
-        })
-
-
-        $(document).on("change", "input[type=date]", (e) => {
-            e.preventDefault();
-
-            let nodeId = $(e.target).data("nodeId");
-            let node = getNode(nodeId, mindmap);
-
-            node.dDay = $(e.target).val();
-
-            drawMindmap();
-        })
     })
-
-    function getNode(id, data) {
-        if (data.id === id) {
-            return data;
-        }
-
-        if (data.children) {
-            for (const child of data.children) {
-                let childResult = getNode(id, child);
-
-                if (childResult) {
-                    return childResult;
-                }
-            }
-        }
-    }
-
-    function isRootNode(node) {
-        return node.id === 'node-0';
-    }
 
 
 </script>
