@@ -31,8 +31,8 @@
 
         .floatTL {
             position: absolute;
-            top: 0px;
-            left: 0px;
+            top: 20px;
+            left: 20px;
         }
 
         #mindmap {
@@ -111,11 +111,24 @@
             height: revert;
         }
 
+        .sticky {
+            position: fixed;
+            top: 5px;
+            left: 5px;
+            width: 100%;
+        }
+
     </style>
 
 </head>
 <body>
 
+<div class="sticky">
+    <button id="save">저장</button>&nbsp;
+    <button id="capture">캡쳐</button>&nbsp;
+    <a id="download_json" href="" download="mindmap.json">다운로드 json</a>&nbsp;
+    마인드맵 json 업로드 : <input type="file" id="load_mindmap">&nbsp;
+</div>
 
 <div id="mindmap" class="floatTL">
 </div>
@@ -134,6 +147,8 @@
 <script src="https://postitall.txusko.com/libs/trumbowyg/dist/trumbowyg.min.js"></script>
 <script src="https://postitall.txusko.com/libs/minicolors/jquery.minicolors.min.js"></script>
 <script src="https://postitall.txusko.com/dist/jquery.postitall.js"></script>
+<script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+
 <script>
 
     class Utils {
@@ -143,6 +158,46 @@
 
         static hideDim() {
             $(".dim").hide();
+        }
+
+        static async read_json_file(file) {
+            let reader = new FileReader();
+
+            return new Promise((resolve, reject) => {
+                reader.readAsText(file);
+                reader.onload = (e) => resolve(JSON.parse(e.target.result));
+            })
+        }
+
+        static download_mindmap(mindmap) {
+            return "data:text/plain;charset=UTF-8," + encodeURIComponent(JSON.stringify(mindmap));
+        }
+
+        static capture(domId) {
+            html2canvas(document.querySelector(domId)).then(function (canvas) {
+                if (canvas.msToBlob) { //for IE 10, 11
+                    let blob = canvas.msToBlob();
+                    window.navigator.msSaveBlob(blob, "capture.png");
+                } else {
+                    Utils.saveAs(canvas.toDataURL(), "capture.png");
+                }
+            });
+        }
+
+        static saveAs(uri, filename) {
+            let link = document.createElement('a');
+            if (typeof link.download === 'string') {
+                link.href = uri;
+                link.download = filename;
+                //Firefox requires the link to be in the body
+                document.body.appendChild(link);
+                //simulate click
+                link.click();
+                //remove the link when done
+                document.body.removeChild(link);
+            } else {
+                window.open(uri);
+            }
         }
     }
 
@@ -155,10 +210,13 @@
 
             this.#drawMindmap();
 
-            this.#addEventNodeChange()
-            this.#addEventNodeDragAndDrop()
-            this.#addEventNodeButton()
-            this.#addEventTask()
+            this.#addEventWindow();
+
+            this.#addEventMenuButton();
+            this.#addEventNodeChange();
+            this.#addEventNodeDragAndDrop();
+            this.#addEventNodeButton();
+            this.#addEventTask();
 
             this.#initPostItAll();
         }
@@ -208,6 +266,39 @@
 
                 }).bind(this)
             });
+        }
+
+        #addEventWindow() {
+            // window.addEventListener('beforeunload', (event) => {
+            //     return confirm("페이지를 이동하시겠습니까?");
+            // });
+
+            window.onbeforeunload = function () {
+                return "Are you sure";
+            };
+        }
+
+        #addEventMenuButton() {
+            $(document).on("click", "#save", (e) => {
+                e.preventDefault();
+                alert("아직 미구현!")
+                console.log(JSON.stringify(this.mindmap));
+            })
+
+            $(document).on("click", "#capture", (e) => {
+                e.preventDefault();
+                Utils.capture("body")
+            })
+
+            $(document).on("click", "#download_json", (e) => {
+                $(e.target).attr("href", Utils.download_mindmap(this.mindmap))
+            })
+
+
+            $(document).on("change", "#load_mindmap", async (e) => {
+                this.mindmap = await Utils.read_json_file(e.target.files[0]);
+                this.#drawMindmap();
+            })
         }
 
         #addEventNodeChange() {
@@ -416,7 +507,6 @@
                 }
 
 
-
             }).bind(this));
         }
 
@@ -566,7 +656,6 @@
                 }
             }).bind(this));
         }
-
 
         #resetId(nodeData) {
             if (nodeData.tasks) {
